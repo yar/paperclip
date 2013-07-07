@@ -1,4 +1,5 @@
 require 'paperclip'
+require 'paperclip/schema'
 
 module Paperclip
   if defined? Rails::Railtie
@@ -17,7 +18,17 @@ module Paperclip
 
   class Railtie
     def self.insert
-      ActiveRecord::Base.send(:include, Paperclip::Glue)
+      Paperclip.options[:logger] = Rails.logger if defined?(Rails)
+      
+      if defined?(ActiveRecord)
+        ActiveRecord::Base.send(:include, Paperclip::Glue)
+        Paperclip.options[:logger] = ActiveRecord::Base.logger
+
+        ActiveRecord::ConnectionAdapters::AbstractAdapter.send(:include, Paperclip::Schema)
+        ActiveRecord::ConnectionAdapters::Table.send(:include, Paperclip::Schema)
+        ActiveRecord::ConnectionAdapters::TableDefinition.send(:include, Paperclip::Schema)
+      end
+
       File.send(:include, Paperclip::Upfile)
     end
   end

@@ -30,7 +30,12 @@ module Paperclip
       # Returns representation of the data of the file assigned to the given
       # style, in the format most representative of the current storage.
       def to_file style_name = default_style
-        @queued_for_write[style_name] || (File.new(path(style_name), 'rb') if exists?(style_name))
+        if @queued_for_write[style_name]
+          @queued_for_write[style_name].rewind
+          @queued_for_write[style_name]
+        elsif exists?(style_name)
+          File.new(path(style_name), 'rb')
+        end
       end
 
       def flush_writes #:nodoc:
@@ -38,9 +43,12 @@ module Paperclip
           file.close
           FileUtils.mkdir_p(File.dirname(path(style_name)))
           log("saving #{path(style_name)}")
-          FileUtils.mv(file.path, path(style_name))
-          FileUtils.chmod(0644, path(style_name))
+          FileUtils.cp(file.path, path(style_name))
+          FileUtils.chmod(0666&~File.umask, path(style_name))
         end
+
+        after_flush_writes # allows attachment to clean up temp files
+
         @queued_for_write = {}
       end
 
@@ -56,8 +64,9 @@ module Paperclip
             while(true)
               path = File.dirname(path)
               FileUtils.rmdir(path)
+              break if File.exists?(path) # Ruby 1.9.2 does not raise if the removal failed.
             end
-          rescue Errno::EEXIST, Errno::ENOTEMPTY, Errno::ENOENT, Errno::EINVAL, Errno::ENOTDIR
+          rescue Errno::EEXIST, Errno::ENOTEMPTY, Errno::ENOENT, Errno::EINVAL, Errno::ENOTDIR, Errno::EACCES
             # Stop trying to remove parent directories
           rescue SystemCallError => e
             log("There was an unexpected error while deleting directories: #{e.class}")
